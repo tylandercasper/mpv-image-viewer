@@ -27,8 +27,18 @@ end
 
 local cleanup = nil -- function set up by drag-to-pan/pan-follows cursor and must be called to clean lingering state
 
+--for whatever reasone, mouse_move does not work when a complex=true event is bound to a mouse button, so instead we simulate it by checking every 16ms
+local update_mouse=nil 
+function watch_mouse()
+	if update_mouse == nil then return end	
+	mp.add_timeout(16/1000,watch_mouse);	
+	update_mouse()
+end
+
+
 function drag_to_pan_handler(table)
-    if cleanup then
+    --wait for release before ending drag. (filters "repeat" events")
+	if table["event"] == "up" and cleanup then
         cleanup()
         cleanup = nil
     end
@@ -53,8 +63,10 @@ function drag_to_pan_handler(table)
             end
         end
         if not move_up and not move_lateral then return end
-        local idle = function()
-            if moved then
+		
+        local last_mouse=mp.get_mouse_pos()
+        update_mouse = function()
+            if(last_mouse ~=mp.get_mouse_pos()) then
                 local mX, mY = mp.get_mouse_pos()
                 local pX = video_pan_origin[1]
                 local pY = video_pan_origin[2]
@@ -83,14 +95,12 @@ function drag_to_pan_handler(table)
                     end
                 end
                 mp.command("no-osd set video-pan-x " .. clamp(pX, -3, 3) .. "; no-osd set video-pan-y " .. clamp(pY, -3, 3))
-                moved = false
             end
+            last_mouse=mp.get_mouse_pos()
         end
-        mp.register_idle(idle)
-        mp.add_forced_key_binding("mouse_move", "image-viewer-mouse-move", function() moved = true end)
+        watch_mouse()        
         cleanup = function()
-            mp.remove_key_binding("image-viewer-mouse-move")
-            mp.unregister_idle(idle)
+			update_mouse=nil
         end
     end
 end
